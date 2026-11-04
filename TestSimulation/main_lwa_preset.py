@@ -21,7 +21,9 @@ from components.security.ecu.types.impl_sec_mod_lwa import StdSecurLwSecModTimin
 from enums.sec_cfg_enum import CAEnum, HashMechEnum, AsymAuthMechEnum, \
     AuKeyLengthEnum, SymAuthMechEnum
 from components.security.communication.stream import MessageStream
-import gui.direct_view_window
+HEADLESS = os.environ.get("IVNS_HEADLESS") == "1"
+if not HEADLESS:
+    import gui.direct_view_window
 from components.base.gateways.impl_can_gateway import CANGateway  # @UnusedImport
 from config import can_registration
 from api.core.component_specs import RegularECUSpec, SimpleECUSpec, \
@@ -343,20 +345,23 @@ api.connect_result_reader(sim_env, monitor, result_reader)
 #===============================================================================
 
 # create the direct view 
-direct_view = gui.direct_view_window.DirectViewer()
-
-# load saved views
-# filepath = r"C:\Users\artur.mrowca\Desktop\aaa.tum"
-# direct_view.load_show(['MessageCountViewPlugin', 'EventlineViewPlugin'], filepath)
-# sys.exit()
-# Create the Viewer and add it 
-# available Plugins: BufferViewPlugin, CanBusStateViewPlugin, CanBusViewPlugin, CheckpointViewPlugin, 
-#                    ConstellationViewPlugin, ECUMessagesViewPlugin, EventlineViewPlugin, MessageCountViewPlugin
-sim_env.gui_lock_sync.acquire()  # optionally ensure thread synchronization
-direct_view.run(result_reader, ['EventlineViewPlugin', 'MessageCountViewPlugin'], sim_env.gui_lock_sync)  # optional: sim_env.gui_lock_sync
-
-# creates a button that makes the simulation stop calling on finish for all interpreters
-api.open_simulation_stop_button(sim_env)
+if not HEADLESS:
+    direct_view = gui.direct_view_window.DirectViewer()
+    
+    # load saved views
+    # filepath = r"C:\Users\artur.mrowca\Desktop\aaa.tum"
+    # direct_view.load_show(['MessageCountViewPlugin', 'EventlineViewPlugin'], filepath)
+    # sys.exit()
+    
+    # Create the Viewer and add it 
+    # available Plugins: BufferViewPlugin, CanBusStateViewPlugin, CanBusViewPlugin, CheckpointViewPlugin, 
+    #                    ConstellationViewPlugin, ECUMessagesViewPlugin, EventlineViewPlugin, MessageCountViewPlugin
+    sim_env.gui_lock_sync.acquire()  # optionally ensure thread synchronization
+    direct_view.run(result_reader, ['EventlineViewPlugin', 'MessageCountViewPlugin'], sim_env.gui_lock_sync)  # optional: sim_env.gui_lock_sync
+    
+    # creates a button that makes the simulation stop calling on finish for all interpreters
+    api.open_simulation_stop_button(sim_env)
+    
 
 # build the simulation
 api.build_simulation(sim_env)

@@ -2,14 +2,14 @@
 import simpy
 import sqlite3 as lite
 from tools.ecu_logging import try_ex , ECULogger
-from PyQt4.Qt import QObject
+from tools.qt_compat import QObject
 from io_processing.surveillance_handler import InputHandlerChain, \
     CheckpointHandler, BufferHandler, CanBusHandler, \
     EventlineHandler, ConstellationHandler, MonitorInput, MonitorTags
 from api.core.api_core import APICore
 import logging
 from tools.general import RefList
-# from PyQt4.Qt import QObject
+# from tools.qt_compat import QObject
 
 class Monitor(QObject):    
     

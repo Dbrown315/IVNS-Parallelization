@@ -4,8 +4,8 @@ Created on 12 Jun, 2015
 @author: artur.mrowca
 '''
 from enum import Enum
-from PyQt4.Qt import QObject
-from PyQt4 import QtCore
+from tools.qt_compat import QObject
+from tools.qt_compat import QtCore
 from tools.ecu_logging import ECULogger
 import copy
         

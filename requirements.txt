@@ -1,0 +1,4 @@
+simpy==3.0.11
+numpy==1.26.4
+scipy==1.12.0
+tinytree==0.2.1

@@ -55,3 +55,8 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Local baseline environment and generated simulation output
+.venv/
+.tools/
+TestSimulation/logs/

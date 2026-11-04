@@ -84,3 +84,53 @@ For tutorials and how to use the simulator checkout the wiki at: https://github.
 
 
 
+
+# Parallel computing team baseline (November 2026)
+
+Upstream source: https://github.com/PhilippMundhenk/IVNS. Original history,
+MIT license, and attribution are preserved. The existing origin points to the
+team repository; upstream points to the original repository. No remote push
+was performed.
+
+Verified headless environment: Windows x64, CPython 3.11.9, SimPy 3.0.11,
+NumPy 1.26.4, SciPy 1.12.0, tinytree 0.2.1. Python 2.7 is mentioned above
+in the original documentation, but this preset was actually executed on Python 3.11.
+
+With a standard Python 3.11 installation, run from the repository root:
+
+```powershell
+py -3.11 -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe run_headless.py
+```
+
+The runner executes the existing `TestSimulation/main_lwa_preset.py` scenario
+with its original 200-second duration, topology, sending actions and timings.
+It sets import paths and creates the logs directory. CSV files and api.log
+are written to TestSimulation/logs. Upstream tracked CSV samples remain in
+Git; generated replacements should not be committed.
+
+Compatibility changes: headless mode explicitly selects synchronous Python
+signals in place of PyQt4 QObject/signals for monitoring and communication
+notifications. Normal GUI mode still imports PyQt4. The preset skips the viewer
+and stop button only in headless mode. Tkinter imports are deferred until the
+stop-button UI is used. No network timing or protocol algorithms were changed.
+SciPy interpolation and the original measurement database remain in use.
+
+See [execution evidence](docs/baseline-evidence.md) for observed results.
+The GUI, other scenarios, other Python versions and other operating systems
+remain unverified. This establishes execution functionality, not numerical
+validation against a historical installation. Upstream code contains broad
+exception handlers, so absence of a top-level exception alone is insufficient;
+CSV activity was also inspected. Random jitter and generated IDs vary by run.
+The final monitor sample is 199.5; monitor exports need not include every event
+before the 200-second boundary. Next steps are teammate reproduction and
+separate architecture/benchmark work; no parallelization was implemented.
+
+Progress report summary: Established an isolated Python 3.11.9 environment
+and successfully executed the existing IVNS LWA preset headlessly through
+200 simulated seconds. Resolved mandatory PyQt4 imports using an explicit
+headless signal adapter and deferred Tkinter UI imports. Pinned four runtime
+dependencies. Verified generated authentication checkpoints, CAN traffic and
+buffer records. Preserved upstream source history and licensing. GUI support
+and numerical equivalence to the legacy environment remain unverified.

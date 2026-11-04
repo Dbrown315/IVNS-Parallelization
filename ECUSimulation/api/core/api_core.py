@@ -14,8 +14,6 @@ import logging
 import sys
 import threading
 from time import sleep
-import tkinter
-from tkinter.font import Font
 from simpy.events import URGENT
 from api.core.component_factories import ECUFactory, BusFactory
 from api.core.component_specs import AutomotiveEnvironmentSpec
@@ -1707,6 +1705,8 @@ class StoppableThread(threading.Thread):
             Output: - 
         '''
         # create GUI
+        import tkinter
+        from tkinter.font import Font
         self.root = tkinter.Tk()
         self.root.geometry('130x35')
         self.root.resizable(width=False, height=False)
