@@ -59,4 +59,5 @@ target/
 # Local baseline environment and generated simulation output
 .venv/
 .tools/
+work/
 TestSimulation/logs/

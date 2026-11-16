@@ -364,6 +364,16 @@ class StdCANBus(AbstractCANBus):
             except: pass
     
     
+    def _transmission_delay(self):
+        """Return the legacy cached transmission delay for the current frame."""
+        if self.current_message_length_bit not in self._used_prop_times:
+            propagation, sending = self._extract_transmission_times()
+            delay = propagation + sending + self.SCB_WRITE_TO_TRANSCEIVER_BUFFER
+            if delay <= 0:
+                delay = 0.000001
+            self._used_prop_times[self.current_message_length_bit] = delay
+        return self._used_prop_times[self.current_message_length_bit]
+
     def _wait_transmission_time_and_buffer(self):
         ''' this method times out for the duration of the transmission and
             then writes the sent messages to the receiving buffer of the ecu
@@ -372,17 +382,7 @@ class StdCANBus(AbstractCANBus):
             Output:      -
         '''
         
-        if not self.current_message_length_bit in self._used_prop_times:
-            # sending times         
-            t_propagation, t_sending = self._extract_transmission_times()    
-            
-            # duration of transmission    
-            wait_time = t_propagation + t_sending + self.SCB_WRITE_TO_TRANSCEIVER_BUFFER 
-            if wait_time <= 0: wait_time = 0.000001
-            self._used_prop_times[self.current_message_length_bit] = wait_time      
-            
-        else:
-            wait_time = self._used_prop_times[self.current_message_length_bit]
+        wait_time = self._transmission_delay()
             
         yield self.sim_env.timeout(wait_time)
         

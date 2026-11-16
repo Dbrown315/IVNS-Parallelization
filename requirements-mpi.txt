@@ -1,0 +1,3 @@
+-r requirements.txt
+serializable-simpy==0.0.3
+mpi4py==4.1.1

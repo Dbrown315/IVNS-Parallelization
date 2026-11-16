@@ -134,3 +134,11 @@ headless signal adapter and deferred Tkinter UI imports. Pinned four runtime
 dependencies. Verified generated authentication checkpoints, CAN traffic and
 buffer records. Preserved upstream source history and licensing. GUI support
 and numerical equivalence to the legacy environment remain unverified.
+
+## Optional MPI CAN backend
+
+An opt-in SerializableSimpy/mpi4py CAN backend is available on this branch.
+See [architecture, setup, limitations, and validation](docs/canbus-mpi.md).
+Run it with `mpiexec -n 4 python run_mpi_headless.py` after installing
+`requirements-mpi.txt`. This is a CAN migration backend; ECU execution remains
+on rank 0 and MPI requests are synchronous, so it does not yet provide a speedup.

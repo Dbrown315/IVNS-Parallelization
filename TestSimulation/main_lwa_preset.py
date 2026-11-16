@@ -178,7 +178,11 @@ gateway_group_2 = api.set_ecus(sim_env, 1, 'CANGateway', ecu_spec)
  
 # create the bus specifications
 bus_spec = SimpleBusSpec(['CAN_0', 'CAN_1', 'CAN_2'])
-bus_group = api.set_busses(sim_env, 3, 'StdCANBus', bus_spec)
+can_backend = os.environ.get('IVNS_CAN_BACKEND', 'serial')
+if can_backend not in ('serial', 'mpi'):
+    raise ValueError('IVNS_CAN_BACKEND must be serial or mpi')
+bus_type = 'MPICANBus' if can_backend == 'mpi' else 'StdCANBus'
+bus_group = api.set_busses(sim_env, 3, bus_type, bus_spec)
  
 # Connect ECUs and Gateways to the busses
 # Connect CAN 0 via GW1 to CAN 1 // Connect CAN 1 via GW 2 to CAN 2
