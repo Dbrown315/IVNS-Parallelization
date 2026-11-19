@@ -23,7 +23,12 @@ def main():
     try:
         os.environ['IVNS_CAN_BACKEND'] = 'mpi'
         (root / 'TestSimulation/logs').mkdir(exist_ok=True)
-        runpy.run_path(str(root / 'TestSimulation/main_lwa_preset.py'), run_name='__main__')
+        try:
+            runpy.run_path(str(root / 'TestSimulation/main_lwa_preset.py'), run_name='__main__')
+        except SystemExit as exc:
+            # APICore signals normal completion with SystemExit(None).
+            if exc.code not in (None, 0):
+                raise
         # Legacy IVNS catches simulation exceptions; still fail the launcher if
         # any worker reported an error instead of silently accepting partial CSVs.
         if runtime.errors:

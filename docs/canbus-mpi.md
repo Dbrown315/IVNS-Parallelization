@@ -5,6 +5,11 @@ This branch implements an opt-in CAN migration backend. The ECU/security
 workload still runs in one process; this implementation does not claim parallel
 speedup or a fully distributed IVNS simulation.
 
+For launch-time ECU and CAN bus counts, use
+[`main_lwa_param.py`](../main_lwa_param.py), for example
+`mpiexec -n 4 python main_lwa_param.py --ecus 12 --buses 3`.
+See [parameterized topology and scaling limitations](lwa-param.md).
+
 ## Architecture
 
 ```mermaid

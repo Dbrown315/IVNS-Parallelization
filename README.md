@@ -142,3 +142,6 @@ See [architecture, setup, limitations, and validation](docs/canbus-mpi.md).
 Run it with `mpiexec -n 4 python run_mpi_headless.py` after installing
 `requirements-mpi.txt`. This is a CAN migration backend; ECU execution remains
 on rank 0 and MPI requests are synchronous, so it does not yet provide a speedup.
+
+Configure topology at launch with `mpiexec -n 4 python main_lwa_param.py --ecus 12 --buses 3`.
+See [parameter options, topology, and speedup limitations](docs/lwa-param.md).
