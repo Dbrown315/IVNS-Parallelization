@@ -22,14 +22,33 @@ jobs:
         with:
           python-version: '3.11'
           architecture: x64
-      - name: Install MS-MPI and Python environment
+      - name: Install MS-MPI runtime
         shell: pwsh
         run: |
-          choco install msmpi --yes --no-progress
-          if ($LASTEXITCODE -ne 0) { throw 'MS-MPI installation failed' }
-          "$env:ProgramFiles\Microsoft MPI\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          try {
+            if (-not (Test-Path "$env:WINDIR\System32\msmpi.dll")) {
+              $Installer = Join-Path $env:RUNNER_TEMP 'msmpisetup.exe'
+              Invoke-WebRequest 'https://github.com/microsoft/Microsoft-MPI/releases/download/v10.1.1/msmpisetup.exe' -OutFile $Installer
+              $Install = Start-Process $Installer -ArgumentList '-unattend' -Wait -PassThru
+              if ($Install.ExitCode -notin @(0, 3010)) { throw "MS-MPI installer exit code $($Install.ExitCode)" }
+            }
+            "$env:ProgramFiles\Microsoft MPI\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          } catch {
+            Write-Output "::error::$($_.Exception.Message)"
+            exit 1
+          }
+      - name: Install Python environment
+        shell: pwsh
+        run: |
           python -m venv .venv
-          .\.venv\Scripts\python.exe -m pip install -r requirements-mpi.txt
+          $Output = .\.venv\Scripts\python.exe -m pip install -r requirements-mpi.txt 2>&1
+          $Code = $LASTEXITCODE
+          $Output | Write-Output
+          if ($Code -ne 0) {
+            $Message = ($Output | Select-Object -Last 20 | Out-String).Replace('%', '%25').Replace("`r", '').Replace("`n", '%0A')
+            Write-Output "::error::Python dependency installation failed: $Message"
+            exit $Code
+          }
       - name: Validate Windows protocol benchmarks
         shell: pwsh
         run: .\scripts\verify_windows.ps1
