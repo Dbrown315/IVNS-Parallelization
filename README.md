@@ -1,152 +1,172 @@
-[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/PhilippMundhenk/IVNS/blob/master/LICENSE)
+[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-# IVNS
-The In-Vehicle Network Simulator (IVNS) is a Python-based simulator, allowing to evaluate parameterized software models of automotive networks for timing and security, among others.
+# IVNS: parallel ECU and CAN simulation
 
-The design and implementation of this work has been performed by **Artur Mrowca**.
+The In-Vehicle Network Simulator (IVNS) models automotive network timing and
+security protocols, including LWA/LASAN, TESLA, and TLS. This branch adds a
+parameterized headless LWA scenario that runs **ECU protocol processing and CAN
+bus events concurrently across MPI ranks**, using mpi4py and local SerializableSimpy
+CAN kernels.
 
-## Support
-This work has been created in TUM CREATE and was financially supported by the Singapore National Research Foundation under its Campus for Research Excellence and Technological Enterprise (CREATE) program.
+The default parallel entry point is [`main_lwa_param.py`](main_lwa_param.py).
+The original fixed preset and the earlier CAN-only RPC backend remain available
+for comparison; they use different execution arrangements described below.
 
-## Description
+## Quick start
 
-This simulator simulates any bus topology within any network on a timing bases. It allows to define 
-the number and behaviour of various ECUs by reimplementing them, to send certain message flows and to 
-exploit the layered structure of each ECU to test the timing behaviour of security protocols in
-different scenarios.
-E.g. LASAN, TESLA or TLS
-It is also highly extensible as it allows to interchange layers within the ECUs, implement any bus
-type desired, create and test any topology, define result outputs by using exising or self implemented 
-plugins, create own GUI plugins and define the timing behaviour from an extensible database.
-In order to use this simulation simpy needs to be downloaded and installed to your python version. Also the 
-Python version 2.7 was used in this implementation.
+Use Python 3.11 and an installed MPI runtime compatible with mpi4py. The parallel
+implementation has been exercised on Linux with Open MPI 5.0.7.
 
-
-This guide quickly introduces the main building bricks of this network simulator and how to use it 
-for an individual application. 
-In its current shape the simulation consists out of ECUs, buses and gateways that can be 
-interconnected. Also the ECUs themselves consist of layers including a physical, data link and
-a transport layer, as well as a communication layer and a application layer.
-
-
-## 1. Structure of the IVNS repository
-
-The uploaded project is structured into 3 subprojects.
-
-	- ECUSimulation:  This project contains the main building bricks of the network including
-			  various ECUs, gateways and a CAN Bus. New components and layers can be added
-			  to those components as desired.
-			  Additionally the API that is used to run the simulation is found in this
-			  folder.
-	- ECUInteraction: This project contains the GUI that is connected to the simulation. It is
-			  used to visualize events within the simulation. It receives information from
-			  monitoring points of the simulation which pass information to a general
-			  pipline from which the GUI receives its simulation information.
-	- TestSimulation: This folder contains an example usage of the API and how to use it
-			  to generate a running simulation using the building bricks given in the
-			  ECUSimulation.
-
-## 2. ECUSimulation - Basic Components
-
-As indicated below, the simulator consists of a database, configuration files and the simulation core.
-To achieve realisitic results for the timing behaviour of security protocols, this simulator offers the
-possibility to read out latencies from encryption, decryption, signing and verification from a database
-depending on the size of the message that is to be processed and the type of algorithm that is used. This
-includes e.g. RSA or AES encryption with various keys (512 to 2048 bit for RSA and 128 to 256 bit for AES).
-The database was measured on a STM32 microcontroller and is stored in \ECUSimulation\config\data\measurements.db.
-Furthermore to configure ECUs, gateways and buses either the API can be used or the project.ini and timings.ini and 
-can_ids.ini file can be used which are located in IVNS\ECUSimulation\config\data. This will be demonstrated in the 
-walkthrough in a later section.
-
-	Database with 			Configuration files - 
-	times measured with 		project, timings, busIds	
-	an STM32 Microcontroller		
-		|								|	
-		---------------------------------
-			       |
-			ECUSimulation Core
-			       |
-			      API
-			       |
-			    Python 
-			  Application 
-			  w or w/o GUI
-
-An easy way to get started is to download the ECUSimulation, ECUInteraction and TestSimulation project and to open it in Eclipse with 
-PyDev on it. By then running the python file main_lwa_preset.py in TestSimulation the setup of a simulation is demonstrated.
-
-
-## 3. Walkthroughs
-
-For tutorials and how to use the simulator checkout the wiki at: https://github.com/arturmrowca/IVNS/wiki
-
-
-
-
-
-
-# Parallel computing team baseline (November 2026)
-
-Upstream source: https://github.com/PhilippMundhenk/IVNS. Original history,
-MIT license, and attribution are preserved. The existing origin points to the
-team repository; upstream points to the original repository. No remote push
-was performed.
-
-Verified headless environment: Windows x64, CPython 3.11.9, SimPy 3.0.11,
-NumPy 1.26.4, SciPy 1.12.0, tinytree 0.2.1. Python 2.7 is mentioned above
-in the original documentation, but this preset was actually executed on Python 3.11.
-
-With a standard Python 3.11 installation, run from the repository root:
-
-```powershell
-py -3.11 -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
-.venv/Scripts/python.exe run_headless.py
+```sh
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-mpi.txt
+mpiexec -n 4 python main_lwa_param.py --ecus 24 --buses 4 --duration 200
 ```
 
-The runner executes the existing `TestSimulation/main_lwa_preset.py` scenario
-with its original 200-second duration, topology, sending actions and timings.
-It sets import paths and creates the logs directory. CSV files and api.log
-are written to TestSimulation/logs. Upstream tracked CSV samples remain in
-Git; generated replacements should not be committed.
+`--ecus` counts regular secure ECUs. The scenario adds one security module and
+one gateway between each adjacent pair of buses. ECUs are spread round-robin
+across a chain of buses; each ECU sends to the next ECU in a ring. Every regular
+ECU authenticates through the LWA protocol.
 
-Compatibility changes: headless mode explicitly selects synchronous Python
-signals in place of PyQt4 QObject/signals for monitoring and communication
-notifications. Normal GUI mode still imports PyQt4. The preset skips the viewer
-and stop button only in headless mode. Tkinter imports are deferred until the
-stop-button UI is used. No network timing or protocol algorithms were changed.
-SciPy interpolation and the original measurement database remain in use.
+The default run uses 6 ECUs, 3 buses, and 200 simulated seconds. Change send
+interval, start time, gateway delay, seed, and output directory at launch:
 
-See [execution evidence](docs/baseline-evidence.md) for observed results.
-The GUI, other scenarios, other Python versions and other operating systems
-remain unverified. This establishes execution functionality, not numerical
-validation against a historical installation. Upstream code contains broad
-exception handlers, so absence of a top-level exception alone is insufficient;
-CSV activity was also inspected. Random jitter and generated IDs vary by run.
-The final monitor sample is 199.5; monitor exports need not include every event
-before the 200-second boundary. Next steps are teammate reproduction and
-separate architecture/benchmark work; no parallelization was implemented.
+```sh
+python main_lwa_param.py --help
+mpiexec -n 4 python main_lwa_param.py --ecus 12 --buses 4 --interval 0.25 --output-dir TestSimulation/logs/example
+```
 
-Progress report summary: Established an isolated Python 3.11.9 environment
-and successfully executed the existing IVNS LWA preset headlessly through
-200 simulated seconds. Resolved mandatory PyQt4 imports using an explicit
-headless signal adapter and deferred Tkinter UI imports. Pinned four runtime
-dependencies. Verified generated authentication checkpoints, CAN traffic and
-buffer records. Preserved upstream source history and licensing. GUI support
-and numerical equivalence to the legacy environment remain unverified.
+Require `2 <= ecus <= 1792` and `1 <= buses <= ecus`. The identifier bound is
+not a validated model-capacity claim. See the [parameter and architecture guide](docs/lwa-param.md)
+for defaults, constraints, and authentication warmup considerations.
 
-## Optional MPI CAN backend
+## What runs in parallel
 
-An opt-in SerializableSimpy/mpi4py CAN backend is available on this branch.
-See [architecture, setup, limitations, and validation](docs/canbus-mpi.md).
-Run it with `mpiexec -n 4 python run_mpi_headless.py` after installing
-`requirements-mpi.txt`. The original RPC mode retains this migration architecture;
-`main_lwa_param.py` now defaults to concurrent bus/ECU partitions.
+Each active rank owns one or more buses **and the ECU processes attached to them**.
+Rank 0 also computes and owns the security module on `CAN_0`. The number of
+active ranks is `min(MPI ranks, buses)`; excess ranks do not join simulation exchanges.
 
-Configure topology at launch with `mpiexec -n 4 python main_lwa_param.py --ecus 12 --buses 3`.
-See [parameter options, topology, and speedup limitations](docs/lwa-param.md).
+```mermaid
+flowchart LR
+    A[Rank 0: local ECUs + security + owned CAN buses]
+    B[Rank 1: local ECUs + owned CAN buses]
+    C[Other active ranks: local ECUs + owned CAN buses]
+    A <-->|Timestamped gateway frame batches| B
+    B <-->|Timestamped gateway frame batches| C
+```
 
-Partitioned execution now runs ECU and CAN events on all active ranks, exchanging
-timestamped gateway frames in conservative windows. See the
-[new architecture and scaling guide](docs/lwa-param.md) and
-[measured results](docs/partitioned-scaling.md). Use `--execution rpc` for the old backend.
+- ECU application, authentication, authorization, and communication-layer
+  generators execute locally on their owner rank. They are not sent through MPI.
+- Each owned `MPICANBus` calls a local `CANService` and SerializableSimpy kernel
+  for arbitration and transmission timing. There are no per-frame CAN RPC round trips.
+- Gateway filters select forwarding directions. Detached frame/payload snapshots
+  cross ranks with absolute arrival times and enter the target gateway port's
+  data-link transmit buffer, where they still contend for the destination bus.
+- Ranks process safe time windows concurrently, then exchange gateway batches.
+  Positive gateway delay supplies lookahead; the default window is half that
+  delay, and `--sync-window` must be positive and no greater than the delay.
+  Arrival times are preserved rather than rounded to window boundaries.
+
+Configuration and PKI setup are currently replicated on active ranks, but only
+owned ECU/bus processes are activated. Rank-local CSVs and logs are written under
+`TestSimulation/logs/param/rank-0000`, etc.; rank 0 merges CSVs and writes
+`summary.json` at the output root. Use separate output directories for concurrent jobs.
+
+See [ECU/CAN implementation and mode comparison](docs/canbus-mpi.md) and the
+[detailed ownership, synchronization, and output guide](docs/lwa-param.md).
+
+## Choose an execution mode
+
+| Entry point | ECU and CAN execution | Purpose |
+| --- | --- | --- |
+| `main_lwa_param.py` (default `--execution partitioned`) | Owned ECU processes and local CAN kernels on every active rank | Concurrent parameterized LWA simulation; supports a one-rank baseline |
+| `main_lwa_param.py --execution rpc` | All ECU processes on rank 0; blocking CAN requests to other ranks | Legacy CAN-only migration/comparison mode; needs at least two ranks |
+| `run_mpi_headless.py` | Fixed original LWA preset using CAN-only RPC | Earlier fixed-topology MPI scenario; needs at least two ranks |
+| `run_headless.py` | Original fixed preset in a single SimPy process | Historical serial scenario; needs only `requirements.txt` |
+
+A one-rank run of the **same generated workload** is the appropriate baseline
+for partitioned speedup measurements:
+
+```sh
+mpiexec -n 1 python main_lwa_param.py --ecus 24 --buses 4 --duration 200 --output-dir TestSimulation/logs/one-rank
+```
+
+The fixed preset has different topology/traffic details and is not an equivalent
+baseline for that command. To run it independently:
+
+```sh
+python -m pip install -r requirements.txt
+python run_headless.py
+```
+
+## Scaling and current limits
+
+Measured full-launcher speedups on four ranks included **1.84x** for a 12-ECU,
+four-bus workload and **2.22x** with denser application traffic, relative to
+each workload's own one-rank run. These are medians of three launches on a shared
+cloud host, not guaranteed gains. See [measurements, raw samples, and caveats](docs/partitioned-scaling.md).
+
+More ranks help only while there are enough buses, CPU capacity, and balanced
+work. More ECUs add useful work but also authentication, congestion, and traffic.
+More buses create partitions but add gateways and forwarding hops. Shorter
+gateway delays/windows require more synchronization; a single bus cannot gain
+partition concurrency from extra ranks. Longer runs can amortize startup, while
+larger exports increase serial output costs.
+
+Replicated configuration setup, the central security module, collective waiting,
+and final merging/digest generation limit scaling. ECU generators remain
+nonserializable, so whole-simulation checkpoint/restart is unavailable; the CAN
+kernel can be serialized independently. Zero-delay gateways require RPC mode.
+Partitioned validation targets the generated static LWA scenario on single-node
+Linux; Windows MPI and multi-node behavior/performance remain unverified. Existing
+`p_sec_mod_cert_size` configuration messages remain in the legacy model.
+
+## Verification and documentation
+
+```sh
+python -m unittest discover -s tests -v
+python tests/param_lwa_smoke.py
+python tests/partitioned_mpi_smoke.py
+python benchmarks/benchmark_lwa.py --suite factors --repeats 3 --output work/scaling.json
+```
+
+The MPI tests check real ECU authentication and application reception, and compare
+semantic event traces across rank counts, safe windows, and a monolithic reference
+using the same snapshot communication model. They do not establish full-state
+equivalence to legacy shared-object gateways. Benchmark sampling and limitations
+are documented alongside the measurements.
+
+- [ECU/CAN architecture and execution-mode comparison](docs/canbus-mpi.md)
+- [Launch parameters, synchronization, results, and scaling factors](docs/lwa-param.md)
+- [Measured scaling and reproducible benchmarks](docs/partitioned-scaling.md)
+- [Historical serial baseline evidence](docs/baseline-evidence.md)
+
+## Repository and model background
+
+| Path | Contents |
+| --- | --- |
+| `ECUSimulation/` | ECU layers, security protocols, CAN buses, gateways, configuration, and simulation API |
+| `ECUInteraction/` | Original GUI and visualization plugins |
+| `TestSimulation/` | Original scenario examples and generated logs |
+| `main_lwa_param.py` | Parameterized ECU/CAN parallel launcher |
+| `tests/`, `benchmarks/`, `docs/` | Correctness checks, performance driver, and documentation |
+
+IVNS uses measured cryptographic latencies from
+`ECUSimulation/config/data/measurements.db`, together with configuration in
+`project.ini`, `timings.ini`, and `can_ids.ini`. ECU layers and protocol models
+can be extended through the simulation API. The original project targeted Python
+2.7 and a PyQt4 GUI; this branch's headless execution uses Python 3.11 and a
+synchronous signal adapter. The original GUI has not been revalidated.
+
+## Attribution and support
+
+Original IVNS design and implementation: **Artur Mrowca**. Upstream source:
+[PhilippMundhenk/IVNS](https://github.com/PhilippMundhenk/IVNS). Original history
+and [MIT license](LICENSE) are preserved.
+
+The original work was created at TUM CREATE with financial support from the
+Singapore National Research Foundation through its Campus for Research
+Excellence and Technological Enterprise (CREATE) programme.
+
+Original tutorials: [IVNS wiki](https://github.com/arturmrowca/IVNS/wiki).

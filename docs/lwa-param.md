@@ -3,7 +3,8 @@
 `main_lwa_param.py` now defaults to **partitioned execution**: ECU/security and
 CAN events run concurrently on multiple MPI ranks. SerializableSimpy CAN operations
 are local calls, replacing blocking per-frame MPI requests. The previous backend
-remains available as `--execution rpc`; [canbus-mpi.md](canbus-mpi.md) describes it.
+remains available as `--execution rpc`; the [implementation overview and mode
+comparison](canbus-mpi.md) explains both architectures.
 
 ## Launch
 
@@ -123,7 +124,7 @@ Increase duration/start when authentication needs more simulated time.
 Partitioned runs write CSVs/logs under `rank-0000`, `rank-0001`, etc. Rank 0 merges
 closed CSV files at the output root and writes `summary.json`. Use different
 directories for concurrent jobs. RPC mode retains the previous output layout.
-The summary records actual rank/ECU/bus ownership, transmissions, gateway frames
+The summary records actual rank/ECU/bus ownership, scheduled transmissions, gateway frames
 and bytes, window count, per-rank compute and exchange/wait times, final simulated
 time, wall time, and semantic digest. Exchange time includes load-imbalance waiting.
 Summary wall time excludes MPI startup/finalization; benchmarks also time the launcher.
@@ -178,7 +179,8 @@ per rank, and surplus ranks. Every ECU must authenticate and receive data.
 
 The distributed trace test compares seven executions of a seven-ECU, three-bus,
 60-second workload: an immediate-message one-rank reference without window buffering;
-windowed 1/2/3/4-rank runs; and two-rank windows of 0.5, 1 and 2 seconds. All match
+1/2/3/4-rank runs with a one-second window; and two additional two-rank runs with
+windows of 0.5 and 2 seconds. All match
 the semantic event digest exactly. The reference uses the new snapshot model,
 rather than the old shared-object gateway model.
 

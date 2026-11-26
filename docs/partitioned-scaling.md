@@ -1,4 +1,9 @@
-# Measured partitioned LWA scaling
+# Measured ECU/CAN partition scaling
+
+These measurements exercise concurrent ECU application/security/communication
+processing and local CAN kernels. They concern the default partitioned mode,
+rather than the earlier CAN-only RPC backend. The
+[implementation overview](canbus-mpi.md) explains the distinction.
 
 Measured November 26, 2026 on one Linux cloud host, CPython 3.11.18, Open MPI
 5.0.7, SerializableSimpy 0.0.3 and mpi4py 4.1.1. CPU affinity exposed five logical

@@ -1,4 +1,10 @@
-# Baseline execution evidence
+# Historical serial baseline execution evidence
+
+This records the original fixed-preset serial validation before ECU/CAN
+partitioned execution was added. It is historical evidence, not a description
+of the current parallel architecture or a speedup baseline for the generated
+parameterized workload. See the [README](../README.md) and
+[current ECU/CAN implementation](canbus-mpi.md) for the active design.
 
 Executed 2026-11-04 on Windows x64, CPython 3.11.9.
 
