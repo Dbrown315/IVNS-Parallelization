@@ -4,27 +4,44 @@
 
 The In-Vehicle Network Simulator (IVNS) models automotive network timing and
 security protocols, including LWA/LASAN, TESLA, and TLS. This branch adds a
-parameterized headless LWA scenario that runs **ECU protocol processing and CAN
+parameterized headless LWA, TESLA, and TLS scenarios that run **ECU protocol processing and CAN
 bus events concurrently across MPI ranks**, using mpi4py and local SerializableSimpy
 CAN kernels.
 
-The default parallel entry point is [`main_lwa_param.py`](main_lwa_param.py).
+The parallel entry points are [`main_lwa_param.py`](main_lwa_param.py),
+[`main_tesla_param.py`](main_tesla_param.py), and [`main_tls_param.py`](main_tls_param.py).
 The original fixed preset and the earlier CAN-only RPC backend remain available
 for comparison; they use different execution arrangements described below.
 
 ## Quick start
 
-Use Python 3.11 and an installed MPI runtime compatible with mpi4py. The parallel
-implementation has been exercised on Linux with Open MPI 5.0.7.
+For Windows benchmarking, install **64-bit Python 3.11** and the **Microsoft
+MS-MPI runtime**. Use the same interpreter and MPI installation for every run.
+The following commands use PowerShell and call the virtual environment directly,
+so activation is unnecessary:
 
-```sh
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements-mpi.txt
-mpiexec -n 4 python main_lwa_param.py --ecus 24 --buses 4 --duration 200
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-mpi.txt
+$env:PYTHONUTF8 = '1'
+mpiexec -n 4 .\.venv\Scripts\python.exe main_lwa_param.py --ecus 24 --buses 4 --duration 200
 ```
 
-`--ecus` counts regular secure ECUs. The scenario adds one security module and
+Run the new TESLA/TLS versions of `TestSimulation/main_tesla_preset.py` and
+`TestSimulation/main_tls_preset.py` with:
+
+```powershell
+mpiexec -n 4 .\.venv\Scripts\python.exe main_tesla_param.py --ecus 12 --buses 4
+mpiexec -n 4 .\.venv\Scripts\python.exe main_tls_param.py --ecus 12 --buses 4
+```
+
+TESLA/TLS use **independent bus-local rings**, with at least two ECUs per bus,
+and no central security module or gateways. Their original protocol models rely
+on process-wide peer coordination; every peer in a session therefore stays with
+its bus on one rank. LWA retains its cross-bus ring and gateway chain. See the
+[protocol parameters and workload differences](docs/protocol-scenarios.md).
+
+For LWA, `--ecus` counts regular secure ECUs. The scenario adds one security module and
 one gateway between each adjacent pair of buses. ECUs are spread round-robin
 across a chain of buses; each ECU sends to the next ECU in a ring. Every regular
 ECU authenticates through the LWA protocol.
@@ -32,9 +49,9 @@ ECU authenticates through the LWA protocol.
 The default run uses 6 ECUs, 3 buses, and 200 simulated seconds. Change send
 interval, start time, gateway delay, seed, and output directory at launch:
 
-```sh
-python main_lwa_param.py --help
-mpiexec -n 4 python main_lwa_param.py --ecus 12 --buses 4 --interval 0.25 --output-dir TestSimulation/logs/example
+```powershell
+.\.venv\Scripts\python.exe main_lwa_param.py --help
+mpiexec -n 4 .\.venv\Scripts\python.exe main_lwa_param.py --ecus 12 --buses 4 --interval 0.25 --output-dir "benchmark-results\LWA example"
 ```
 
 Require `2 <= ecus <= 1792` and `1 <= buses <= ecus`. The identifier bound is
@@ -44,12 +61,12 @@ for defaults, constraints, and authentication warmup considerations.
 ## What runs in parallel
 
 Each active rank owns one or more buses **and the ECU processes attached to them**.
-Rank 0 also computes and owns the security module on `CAN_0`. The number of
+Rank 0 also computes and, for LWA, owns the security module on `CAN_0`. The number of
 active ranks is `min(MPI ranks, buses)`; excess ranks do not join simulation exchanges.
 
 ```mermaid
 flowchart LR
-    A[Rank 0: local ECUs + security + owned CAN buses]
+    A[Rank 0: local ECUs + owned CAN buses + LWA security]
     B[Rank 1: local ECUs + owned CAN buses]
     C[Other active ranks: local ECUs + owned CAN buses]
     A <-->|Timestamped gateway frame batches| B
@@ -67,6 +84,8 @@ flowchart LR
   Positive gateway delay supplies lookahead; the default window is half that
   delay, and `--sync-window` must be positive and no greater than the delay.
   Arrival times are preserved rather than rounded to window boundaries.
+- TESLA/TLS have no cross-bus links, so their owned protocol cohorts run to the
+  horizon concurrently without intermediate gateway exchanges.
 
 Configuration and PKI setup are currently replicated on active ranks, but only
 owned ECU/bus processes are activated. Rank-local CSVs and logs are written under
@@ -81,6 +100,7 @@ See [ECU/CAN implementation and mode comparison](docs/canbus-mpi.md) and the
 | Entry point | ECU and CAN execution | Purpose |
 | --- | --- | --- |
 | `main_lwa_param.py` (default `--execution partitioned`) | Owned ECU processes and local CAN kernels on every active rank | Concurrent parameterized LWA simulation; supports a one-rank baseline |
+| `main_tesla_param.py`, `main_tls_param.py` | Independent bus-local TESLA/TLS peer cohorts on their owner ranks, using local CAN kernels | Parameterized versions of the original presets; supports one-rank baselines |
 | `main_lwa_param.py --execution rpc` | All ECU processes on rank 0; blocking CAN requests to other ranks | Legacy CAN-only migration/comparison mode; needs at least two ranks |
 | `run_mpi_headless.py` | Fixed original LWA preset using CAN-only RPC | Earlier fixed-topology MPI scenario; needs at least two ranks |
 | `run_headless.py` | Original fixed preset in a single SimPy process | Historical serial scenario; needs only `requirements.txt` |
@@ -88,16 +108,16 @@ See [ECU/CAN implementation and mode comparison](docs/canbus-mpi.md) and the
 A one-rank run of the **same generated workload** is the appropriate baseline
 for partitioned speedup measurements:
 
-```sh
-mpiexec -n 1 python main_lwa_param.py --ecus 24 --buses 4 --duration 200 --output-dir TestSimulation/logs/one-rank
+```powershell
+mpiexec -n 1 .\.venv\Scripts\python.exe main_lwa_param.py --ecus 24 --buses 4 --duration 200 --output-dir benchmark-results/one-rank
 ```
 
 The fixed preset has different topology/traffic details and is not an equivalent
 baseline for that command. To run it independently:
 
-```sh
-python -m pip install -r requirements.txt
-python run_headless.py
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe run_headless.py
 ```
 
 ## Scaling and current limits
@@ -118,17 +138,20 @@ Replicated configuration setup, the central security module, collective waiting,
 and final merging/digest generation limit scaling. ECU generators remain
 nonserializable, so whole-simulation checkpoint/restart is unavailable; the CAN
 kernel can be serialized independently. Zero-delay gateways require RPC mode.
-Partitioned validation targets the generated static LWA scenario on single-node
-Linux; Windows MPI and multi-node behavior/performance remain unverified. Existing
+The scripts and benchmark driver use portable paths, UTF-8 CSVs, and subprocess
+argument lists for Windows. Use the [Windows preflight](docs/windows-benchmarking.md)
+and [Windows CI job](.github/workflows/windows-benchmark-smoke.yml) to validate the
+actual Python/MS-MPI combination before timing runs. Historical cloud timings are
+not Windows benchmark results. Multi-node performance remains unverified. Existing
 `p_sec_mod_cert_size` configuration messages remain in the legacy model.
 
 ## Verification and documentation
 
-```sh
-python -m unittest discover -s tests -v
-python tests/param_lwa_smoke.py
-python tests/partitioned_mpi_smoke.py
-python benchmarks/benchmark_lwa.py --suite factors --repeats 3 --output work/scaling.json
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify_windows.ps1
+.\.venv\Scripts\python.exe benchmarks/benchmark_protocols.py --protocol lwa --suite factors --repeats 3 --output benchmark-results/lwa.json
+.\.venv\Scripts\python.exe benchmarks/benchmark_protocols.py --protocol tesla --suite strong --repeats 3 --output benchmark-results/tesla.json
+.\.venv\Scripts\python.exe benchmarks/benchmark_protocols.py --protocol tls --suite strong --repeats 3 --output benchmark-results/tls.json
 ```
 
 The MPI tests check real ECU authentication and application reception, and compare
@@ -140,6 +163,8 @@ are documented alongside the measurements.
 - [ECU/CAN architecture and execution-mode comparison](docs/canbus-mpi.md)
 - [Launch parameters, synchronization, results, and scaling factors](docs/lwa-param.md)
 - [Measured scaling and reproducible benchmarks](docs/partitioned-scaling.md)
+- [TESLA/TLS parameterized scenarios](docs/protocol-scenarios.md)
+- [Windows installation, preflight, and benchmarking](docs/windows-benchmarking.md)
 - [Historical serial baseline evidence](docs/baseline-evidence.md)
 
 ## Repository and model background
@@ -150,6 +175,7 @@ are documented alongside the measurements.
 | `ECUInteraction/` | Original GUI and visualization plugins |
 | `TestSimulation/` | Original scenario examples and generated logs |
 | `main_lwa_param.py` | Parameterized ECU/CAN parallel launcher |
+| `main_tesla_param.py`, `main_tls_param.py` | Parameterized bus-local protocol benchmarks |
 | `tests/`, `benchmarks/`, `docs/` | Correctness checks, performance driver, and documentation |
 
 IVNS uses measured cryptographic latencies from

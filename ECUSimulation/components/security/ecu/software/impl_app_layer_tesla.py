@@ -65,7 +65,7 @@ class TeslaApplicationLayer(RegularApplicationLayer):
             self.sim_env.process(self.comm_mod.send_msg(self._ecu_id, sending_action.message_id, sending_action.data))
 
             # timeout fixed interval (use random value to avoid message loss due to parallel processes)
-            yield self.sim_env.timeout(sending_action.interval * self._jitter * (1 + 0.000000000001 * random.random()))
+            yield self.sim_env.timeout(sending_action.interval * self._jitter * (1 + 0.000000000001 * self.random_source.random()))
                  
     
     def _trigger_tesla_sender_setup(self):

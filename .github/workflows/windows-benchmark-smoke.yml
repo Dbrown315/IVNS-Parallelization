@@ -1,0 +1,40 @@
+name: Windows MPI benchmark preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/canbus-serializable-mpi]
+    paths: ['**.py', 'requirements*.txt', 'scripts/verify_windows.ps1', '.github/workflows/windows-benchmark-smoke.yml']
+  pull_request:
+
+jobs:
+  windows-mpi:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Install MS-MPI and Python environment
+        shell: pwsh
+        run: |
+          choco install msmpi --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'MS-MPI installation failed' }
+          "$env:ProgramFiles\Microsoft MPI\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install -r requirements-mpi.txt
+      - name: Validate Windows protocol benchmarks
+        shell: pwsh
+        run: .\scripts\verify_windows.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-mpi-preflight
+          path: benchmark-results/preflight

@@ -60,4 +60,5 @@ target/
 .venv/
 .tools/
 work/
+benchmark-results/
 TestSimulation/logs/

@@ -33,7 +33,7 @@ class BufferInterpreter(AbstractInterpreter):
         try:
 #             idx = filepath[::-1].find('.')
 #             filepath = filepath[:(-idx - 1)] + filepath[(-idx - 1):]
-            self.csv_file = open(filepath, 'w')
+            self.csv_file = open(filepath, 'w', newline='', encoding='utf-8')
             self.csv_writer = csv.writer(self.csv_file, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         except:
             pass

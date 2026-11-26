@@ -4,6 +4,12 @@ The default `main_lwa_param.py` mode distributes **ECU protocol processing toget
 with CAN bus execution**. This guide covers the current design and distinguishes
 it from the retained synchronous CAN-only RPC backend.
 
+The new `main_tesla_param.py` and `main_tls_param.py` launch independent bus-local
+protocol cohorts with the same local CAN kernels. Their process-wide peer state
+stays within its owner rank; they do not claim cross-rank gateway sessions.
+See [protocol scenarios](protocol-scenarios.md) and the
+[Windows benchmarking guide](windows-benchmarking.md).
+
 ```sh
 mpiexec -n 4 python main_lwa_param.py --ecus 24 --buses 4
 ```
@@ -135,6 +141,7 @@ identifiers. They use an immediate-message reference of the snapshot model.
 
 Whole-partition checkpoint/restart, rank-loss recovery, dynamic topology changes,
 and zero-delay distributed lookahead are not implemented. Validation targets the
-generated static LWA scenario on single-node Linux. Partition-aware setup and
+generated static protocol scenarios. Windows benchmark machines should run the
+provided PowerShell preflight before timing. Partition-aware setup and
 neighbor-only exchanges remain opportunities beyond the current replicated
 configuration and batched all-to-all design.

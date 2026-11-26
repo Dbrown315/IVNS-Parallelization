@@ -5,7 +5,12 @@ processing and local CAN kernels. They concern the default partitioned mode,
 rather than the earlier CAN-only RPC backend. The
 [implementation overview](canbus-mpi.md) explains the distinction.
 
-Measured November 26, 2026 on one Linux cloud host, CPython 3.11.18, Open MPI
+These are **historical cloud measurements, not Windows benchmark results**.
+Regenerate results on the Windows benchmark machines with the
+[Windows instructions](windows-benchmarking.md); the raw platform metadata is
+retained as provenance and has not been relabeled.
+
+Measured November 26, 2026 on one cloud host, CPython 3.11.18, Open MPI
 5.0.7, SerializableSimpy 0.0.3 and mpi4py 4.1.1. CPU affinity exposed five logical
 CPUs; the cgroup quota allowed four CPUs of aggregate execution. This was a shared
 cloud environment, not an isolated performance lab.

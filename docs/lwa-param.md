@@ -8,11 +8,12 @@ comparison](canbus-mpi.md) explains both architectures.
 
 ## Launch
 
-Use Python 3.11 and a compatible MPI runtime:
+For Windows, use 64-bit Python 3.11 and MS-MPI. See the
+[Windows setup and preflight guide](windows-benchmarking.md). In PowerShell:
 
-```sh
-python -m pip install -r requirements-mpi.txt
-mpiexec -n 4 python main_lwa_param.py --ecus 24 --buses 4 --duration 200
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-mpi.txt
+mpiexec -n 4 .\.venv\Scripts\python.exe main_lwa_param.py --ecus 24 --buses 4 --duration 200
 ```
 
 All four ranks compute; rank 0 is no longer a dedicated coordinator. For a serial
@@ -190,6 +191,6 @@ exception aborts the MPI job to avoid leaving peers blocked in a collective;
 rank-loss recovery is not implemented. This targets the generated static LWA
 topology, not arbitrary dynamic IVNS models. Collective batch metadata grows
 with rank count; neighbor-only exchange and partition-aware setup construction
-are further opportunities. Current validation is single-node Linux; Windows and
-multi-node performance remain unverified. Existing `p_sec_mod_cert_size` errors
+are further opportunities. Native Windows preflight is provided for the benchmark
+machines; multi-node performance remains unverified. Existing `p_sec_mod_cert_size` errors
 still appear in the legacy configuration logs.

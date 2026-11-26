@@ -148,7 +148,7 @@ def merge_exports(output, ranks):
         rows, header = [], None
         for rank in range(ranks):
             path = output / f'rank-{rank:04d}' / name
-            with path.open(newline='') as handle:
+            with path.open(newline='', encoding='utf-8') as handle:
                 source = csv.reader(handle, delimiter=delimiter, **({'quotechar': '|'} if name == 'buffer.csv' else {}))
                 if has_header:
                     current = next(source)
@@ -157,7 +157,7 @@ def merge_exports(output, ranks):
                     header = current
                 rows.extend(source)
         rows.sort(key=lambda row: (float(row[time_column]), tuple(row)))
-        with (output / name).open('w', newline='') as handle:
+        with (output / name).open('w', newline='', encoding='utf-8') as handle:
             writer = csv.writer(handle, delimiter=delimiter, **({'quotechar': '|'} if name == 'buffer.csv' else {}))
             if header is not None:
                 writer.writerow(header)
@@ -166,14 +166,14 @@ def merge_exports(output, ranks):
 
 def semantic_digest(output):
     """Ignore object addresses and random IDs; retain event time, identity and stream."""
-    with (output / 'checkpoints.csv').open() as handle:
+    with (output / 'checkpoints.csv').open(encoding='utf-8', newline='') as handle:
         rows = list(csv.DictReader(handle, delimiter=';'))
     canonical = sorted((row['Time'], row['Component ID'], row['Monitor Tag'], row['Message Size'],
                         row['Stream ID'], row['Message Identifier']) for row in rows)
     return hashlib.sha256(json.dumps(canonical).encode()).hexdigest()
 
 
-def run_partitioned(args):
+def run_partitioned(args, builder=None):
     from mpi4py import MPI
     world = MPI.COMM_WORLD
     world_rank, world_size = world.Get_rank(), world.Get_size()
@@ -189,7 +189,8 @@ def run_partitioned(args):
         # Import IVNS under the same setup identity sequence on every process.
         with setup_identifiers(args.seed):
             from components.base.bus.parallel.mpi_can_runtime import CANService, install_runtime
-            from main_lwa_param import build_scenario
+            if builder is None:
+                from main_lwa_param import build_scenario as builder
             service = CANService()
             install_runtime(service)
             local_args = copy.copy(args)
@@ -198,8 +199,12 @@ def run_partitioned(args):
             if rank == 0:
                 (output / 'summary.json').unlink(missing_ok=True)
             random.seed(args.seed)
-            spec, plan = build_scenario(local_args)
+            spec, plan = builder(local_args)
         env = spec.get_env()
+        if not plan['gateway_links']:
+            # Independent buses have no remote effects requiring intermediate
+            # synchronization. TESLA/TLS cohorts keep legacy shared state local.
+            window = args.duration
         owners = {bus: index % size for index, bus in enumerate(plan['bus_members'])}
         exchange = GatewayExchange(env, owners, rank, size, lookahead=window)
         for ecu in spec.sim_param.ecus.values():
@@ -245,12 +250,13 @@ def run_partitioned(args):
             summary = dict(plan, execution='partitioned', backend='MPICANBus / local SerializableCAN / mpi4py',
                            mpi_ranks=world_size, workers_used=size, worker_assignments=owners,
                            sync_window=window, simulated_until=args.duration, seed=args.seed,
-                           interval=args.interval, start=args.start, gateway_delay=args.gateway_delay,
+                           interval=args.interval, start=args.start,
+                           gateway_delay=args.gateway_delay if plan.get('protocol', 'lwa') == 'lwa' else None,
                            ranks=stats, semantic_digest=semantic_digest(output),
                            compute_critical_seconds=max(item['compute_seconds'] for item in stats),
                            total_seconds=time.perf_counter() - started)
-            (output / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
-            print(f'Completed concurrent LWA: {args.ecus} ECUs, {args.buses} buses, '
+            (output / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+            print(f'Completed concurrent {plan.get("protocol", "lwa").upper()}: {args.ecus} ECUs, {args.buses} buses, '
                   f'{size} active MPI ranks; results: {output}')
         install_runtime(None)
         comm.Free()
