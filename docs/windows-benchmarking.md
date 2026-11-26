@@ -7,6 +7,19 @@ The pinned mpi4py package uses the installed runtime; the MS-MPI SDK is not
 needed when pip installs a compatible wheel. Use the same Python and MPI
 versions for every comparison.
 
+## Native Windows validation
+
+The [Windows/MS-MPI preflight run](https://github.com/Dbrown315/IVNS-Parallelization/actions/runs/45886778328)
+passed on November 26, 2026 for code commit `1393650`. It installed the runtime
+and pinned dependencies, passed 15 unit/regression tests, checked TESLA/TLS
+application reception and matching traces on 1/2/3 ranks, and completed
+LWA/TESLA/TLS benchmark smoke checks on 1/2 ranks. Reports are attached to that
+run as `windows-mpi-preflight`.
+
+This verifies native Windows execution for those cases. It is not a performance
+measurement for your benchmark machines; run the same preflight there before
+collecting full timing sweeps.
+
 ## Install and check
 
 Run from the repository root in PowerShell:

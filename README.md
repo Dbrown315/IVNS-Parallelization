@@ -54,7 +54,8 @@ interval, start time, gateway delay, seed, and output directory at launch:
 mpiexec -n 4 .\.venv\Scripts\python.exe main_lwa_param.py --ecus 12 --buses 4 --interval 0.25 --output-dir "benchmark-results\LWA example"
 ```
 
-Require `2 <= ecus <= 1792` and `1 <= buses <= ecus`. The identifier bound is
+LWA requires `2 <= ecus <= 1792` and `1 <= buses <= ecus`; TESLA/TLS require
+at least two ECUs per bus (`buses <= floor(ecus/2)`). The identifier bound is
 not a validated model-capacity claim. See the [parameter and architecture guide](docs/lwa-param.md)
 for defaults, constraints, and authentication warmup considerations.
 
@@ -89,7 +90,8 @@ flowchart LR
 
 Configuration and PKI setup are currently replicated on active ranks, but only
 owned ECU/bus processes are activated. Rank-local CSVs and logs are written under
-`TestSimulation/logs/param/rank-0000`, etc.; rank 0 merges CSVs and writes
+`TestSimulation/logs/param/rank-0000` for LWA, or the corresponding
+`tesla-param` / `tls-param` directory; rank 0 merges CSVs and writes
 `summary.json` at the output root. Use separate output directories for concurrent jobs.
 
 See [ECU/CAN implementation and mode comparison](docs/canbus-mpi.md) and the
@@ -144,6 +146,10 @@ and [Windows CI job](.github/workflows/windows-benchmark-smoke.yml) to validate 
 actual Python/MS-MPI combination before timing runs. Historical cloud timings are
 not Windows benchmark results. Multi-node performance remains unverified. Existing
 `p_sec_mod_cert_size` configuration messages remain in the legacy model.
+
+[Native Windows/MS-MPI CI passed](https://github.com/Dbrown315/IVNS-Parallelization/actions/runs/45886778328),
+including TESLA/TLS traffic checks and smoke benchmarks for all three protocols.
+The [Windows guide](docs/windows-benchmarking.md) records the validated code and scope.
 
 ## Verification and documentation
 
