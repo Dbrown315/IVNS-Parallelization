@@ -29,6 +29,7 @@ class RegularApplicationLayer(AbstractApplicationLayer):
         self._period_cnt = {}
         self._jitter = 1.0
         self.message_number = False
+        self.random_source = random  # Partitioned runs can provide an ECU-specific RNG.
           
             
     def set_max_message_number(self, nr_messages):
@@ -103,7 +104,7 @@ class RegularApplicationLayer(AbstractApplicationLayer):
             self.sim_env.process(self.comm_mod.send_msg(self._ecu_id, sending_action.message_id, sending_action.data))
 
             # timeout fixed interval (use random value to avoid message loss due to parallel processes)
-            yield self.sim_env.timeout(sending_action.interval * self._jitter * (1 + 0.000000000001 * random.random()))
+            yield self.sim_env.timeout(sending_action.interval * self._jitter * (1 + 0.000000000001 * self.random_source.random()))
            
      
     def main(self):

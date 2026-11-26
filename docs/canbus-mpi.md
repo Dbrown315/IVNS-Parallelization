@@ -1,5 +1,11 @@
 # SerializableSimpy and MPI CAN backend
 
+This document describes the **legacy synchronous RPC mode**. The default
+`main_lwa_param.py` now runs concurrent bus/ECU partitions; see the
+[current architecture and scaling guide](lwa-param.md). Use `--execution rpc`
+for the parameterized RPC implementation. The fixed `run_mpi_headless.py`
+preset continues to use RPC mode.
+
 Based on `environment-setup` at `73e6b4682c295a83e5c113a06d9bbe9e0d5d1e5d`.
 This branch implements an opt-in CAN migration backend. The ECU/security
 workload still runs in one process; this implementation does not claim parallel

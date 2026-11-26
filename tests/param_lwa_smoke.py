@@ -28,7 +28,7 @@ def main():
             assert summary['regular_ecus'] == ecus
             assert summary['can_buses'] == buses
             assert summary['simulated_until'] == 60
-            assert summary['workers_used'] == min(buses, ranks - 1)
+            assert summary['workers_used'] == min(buses, ranks)
             assert set(summary['worker_assignments']) == {f'CAN_{i}' for i in range(buses)}
             with (folder / 'checkpoints.csv').open() as handle:
                 rows = list(csv.DictReader(handle, delimiter=';'))

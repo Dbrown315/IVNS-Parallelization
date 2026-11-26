@@ -13,7 +13,8 @@ class LWAParamTests(unittest.TestCase):
         for argv in (['--ecus', '1'], ['--ecus', '1793'], ['--buses', '0'],
                      ['--ecus', '2', '--buses', '3'], ['--duration', '0'],
                      ['--duration', 'nan'], ['--interval', 'inf'], ['--interval', '-1'],
-                     ['--start', '-1'], ['--start', '200'], ['--gateway-delay', '-1']):
+                     ['--start', '-1'], ['--start', '200'], ['--gateway-delay', '-1'],
+                     ['--gateway-delay', '0'], ['--sync-window', '3'], ['--sync-window', '0']):
             with self.subTest(argv=argv), redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as exc:
                     parse_args(argv)

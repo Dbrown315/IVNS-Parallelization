@@ -60,7 +60,8 @@ class CheckpointInterpreterCore(object):
         try:
 #             idx = filepath[::-1].find('.')
 #             filepath = filepath[:(-idx - 1)] + "_run" + filepath[(-idx - 1):]
-            self.csv_writer = csv.writer(open(filepath, 'w'), delimiter=';')
+            self.csv_file = open(filepath, 'w')
+            self.csv_writer = csv.writer(self.csv_file, delimiter=';')
             el = ["Time", "Component ID", "Description", "Monitor Tag", "Processed Message", "Message Size", "Stream ID", "Category", "Message Identifier"]
             self.csv_writer.writerow(el)
         except:

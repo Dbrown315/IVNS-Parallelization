@@ -1,161 +1,193 @@
-# Launch a configurable LWA scenario
+# Concurrent LWA bus/ECU partitions
 
-`main_lwa_param.py` is a headless, MPI entry point on the
-`codex/canbus-serializable-mpi` branch. It always constructs `MPICANBus` objects,
-using the existing SerializableSimpy CAN worker implementation. It does not
-select the original `StdCANBus` backend.
+`main_lwa_param.py` now defaults to **partitioned execution**: ECU/security and
+CAN events run concurrently on multiple MPI ranks. SerializableSimpy CAN operations
+are local calls, replacing blocking per-frame MPI requests. The previous backend
+remains available as `--execution rpc`; [canbus-mpi.md](canbus-mpi.md) describes it.
 
-From the repository root, using Python 3.11 and an installed MPI runtime:
+## Launch
+
+Use Python 3.11 and a compatible MPI runtime:
 
 ```sh
 python -m pip install -r requirements-mpi.txt
-mpiexec -n 4 python main_lwa_param.py --ecus 12 --buses 3
+mpiexec -n 4 python main_lwa_param.py --ecus 24 --buses 4 --duration 200
 ```
 
-For a separate result directory and a longer authentication warmup:
+All four ranks compute; rank 0 is no longer a dedicated coordinator. For a serial
+strong-scaling baseline, run the same workload with `mpiexec -n 1`. For the old
+arrangement, add `--execution rpc` (which needs at least two ranks).
 
-```sh
-mpiexec -n 3 python main_lwa_param.py --ecus 24 --buses 6 --duration 300 --start 60 --interval 0.5 --output-dir TestSimulation/logs/24-ecus
+## Architecture
+
+```mermaid
+flowchart TB
+    Setup[Identical configuration and PKI setup on each active rank]
+    Setup --> R0
+    Setup --> R1
+    Setup --> RN
+    subgraph R0[Rank 0]
+      C0[Local ECU stacks + security module on CAN_0]
+      B0[Owned MPICANBus + local SerializableCAN]
+      C0 <--> B0
+    end
+    subgraph R1[Rank 1]
+      C1[Local ECU stacks]
+      B1[Owned MPICANBus + local SerializableCAN]
+      C1 <--> B1
+    end
+    subgraph RN[Other active ranks]
+      CN[Local ECU stacks]
+      BN[Owned MPICANBus + local SerializableCAN]
+      CN <--> BN
+    end
+    B0 <--> X[Timestamped gateway batches at safe window boundaries]
+    B1 <--> X
+    BN <--> X
+    R0 --> F[Rank-local CSVs; rank 0 merges outputs and summary]
+    R1 --> F
+    RN --> F
 ```
 
-`python main_lwa_param.py --help` lists the options without requiring MPI
-initialization. Actual simulation needs at least two ranks: rank 0 runs IVNS;
-the remaining ranks serve CAN requests. The rank count is independent of the
-number of buses. One worker can own multiple buses, and surplus workers can
-remain idle.
+Each bus and its attached regular ECUs have one owner. Bus ownership is
+`bus_index % active_ranks`, where `active_ranks = min(bus_count, rank_count)`.
+One rank can own several buses. Excess ranks do not join simulation collectives,
+although they still incur MPI job startup/finalization costs.
 
-## Parameters and topology
+Existing SimPy generators stay within their owning process. Moving their execution
+does not require serializing those generators: only detached CAN frame snapshots
+cross rank boundaries. `MPICANBus` calls its local `CANService`/SerializableSimpy
+callback kernel for arbitration and transmission timing. Existing delay-cache,
+controller, buffer, and send-completion interfaces remain.
+
+Each rank currently constructs a full configuration replica to initialize legacy
+certificates, public-key registries, filters, and security registration consistently.
+It then activates **only** owned ECU and bus processes. Nonlocal replicas do not
+process protocol events. Gateway port processes initialized during setup remain
+idle unless their bus is local. This costs duplicated setup time and memory.
+
+Initial PKI and gateway identities use the same deterministic setup sequence.
+Normal UUID generation is restored after construction. Each application's interval
+jitter has an ECU-specific RNG, so rank placement does not change the workload.
+Opaque UUID/nonce values are excluded from the semantic trace digest.
+
+## Gateway transport and causality
+
+The original gateway filters decide which forwarding directions accept a frame.
+Forwarding snapshots the frame and payload, excluding its SimPy environment.
+The envelope contains source/target bus, gateway identity, sequence, and
+`arrival = source_receive_time + gateway_delay`. At that timestamp, the owner
+inserts the snapshot into the target gateway port's existing data-link transmit
+buffer. It still contends for the CAN bus; it is not delivered directly to an app.
+
+Positive gateway delay supplies conservative lookahead. Ranks independently
+process half-open windows `[t, t + window)`, then exchange queued frames with one
+batched MPI `alltoall`. Since `window <= gateway_delay`, effects generated during
+the window cannot reach a neighbor before its end. Absolute delivery timestamps
+are preserved; delivery is not rounded to a synchronization boundary.
+
+The default window is half the gateway delay. `--sync-window` must be positive
+and at most the delay. Actual forwarding delays are checked, and late/misrouted
+frames are rejected. Zero-delay gateways require the old RPC mode. Increasing a
+modeled delay simply for speed changes the simulation being studied.
+
+Even colocated gateway edges use snapshots and the same batch path. Incoming
+frames are sorted by arrival time, source bus, target bus, and per-edge sequence.
+Gateway arrivals precede rank-local events at equal timestamps. This defines
+boundary ordering and prevents subsequent mutations from changing an in-flight
+frame. These are semantics of the new snapshot model: bit-for-bit equivalence to
+the legacy shared-object gateway is not claimed for exact ties or mutable aliasing.
+
+## Inputs and results
 
 | Option | Default | Meaning |
 | --- | ---: | --- |
-| `--ecus` | 6 | Total regular secure ECUs, excluding security module and gateways |
-| `--buses` | 3 | Total CAN buses |
-| `--duration` | 200 | Simulation duration, in simulated seconds |
-| `--start` | 10 | First send attempt by each ECU, in simulated seconds |
+| `--ecus` | 6 | Regular secure ECUs, excluding security module and gateways |
+| `--buses` | 3 | CAN buses |
+| `--execution` | `partitioned` | Concurrent partitions, or legacy `rpc` |
+| `--duration` | 200 | Simulated seconds |
+| `--start` | 10 | First application send attempt |
 | `--interval` | 0.5 | Send interval per ECU, in simulated seconds |
 | `--gateway-delay` | 2 | Forwarding delay per gateway, in simulated seconds |
-| `--seed` | 1729 | Python random seed for jitter; UUIDs still vary |
-| `--output-dir` | `TestSimulation/logs/param` | Result directory; reruns overwrite its results |
+| `--sync-window` | delay / 2 | Conservative synchronization interval |
+| `--seed` | 1729 | Initialization/application-jitter seed |
+| `--output-dir` | `TestSimulation/logs/param` | Result directory; reruns overwrite results |
 
-ECUs are assigned round-robin to buses, so bus populations differ by at most
-one. Buses form a chain, with one gateway between each adjacent pair. One
-security module sits on `CAN_0`. For `E` regular ECUs and `B` buses, the scenario
-contains `E + 1 + (B - 1) = E + B` ECU-like objects, counting the security module
-and gateways. With one bus there are no gateways.
+ECUs are assigned round-robin to buses. Buses form a chain, with one gateway per
+adjacent pair and one security module on `CAN_0`. Every ECU authenticates and sends
+a 50-byte payload to the next ECU in a ring; the last sends to `ECU_0`. Streams
+use unique CAN IDs starting at `0x100`. Constraints remain `2 <= ECUs <= 1792` and
+`1 <= buses <= ECUs`; the identifier bound is not a validated capacity claim.
+Increase duration/start when authentication needs more simulated time.
 
-Every regular ECU authenticates through the LWA protocol. Each sends a 50-byte
-application payload to the next ECU in a ring; the last sends to `ECU_0`.
-Streams have unique CAN identifiers starting at `0x100`. Certificates,
-authorized streams, database timing functions, and gateway filters are
-generated from the requested topology. This is a new generated workload; its
-defaults do not reproduce `main_lwa_preset.py`'s asymmetric sending actions or
-its pre-authenticated sender.
+Partitioned runs write CSVs/logs under `rank-0000`, `rank-0001`, etc. Rank 0 merges
+closed CSV files at the output root and writes `summary.json`. Use different
+directories for concurrent jobs. RPC mode retains the previous output layout.
+The summary records actual rank/ECU/bus ownership, transmissions, gateway frames
+and bytes, window count, per-rank compute and exchange/wait times, final simulated
+time, wall time, and semantic digest. Exchange time includes load-imbalance waiting.
+Summary wall time excludes MPI startup/finalization; benchmarks also time the launcher.
 
-Inputs require `2 <= E <= 1792` and `1 <= B <= E`. This keeps every bus populated
-and reserves one unique standard 11-bit CAN identifier per sender. Configured
-authentication identifiers must not overlap that range. The maximum is an
-identifier bound, not a claim that such a large model has been validated.
-Times must be finite, duration and interval positive, gateway delay nonnegative,
-and start within the simulation horizon.
+The digest retains checkpoint times, component IDs, tags, sizes, stream and CAN IDs;
+it ignores addresses and opaque identifiers. It is a reproducibility check, not
+proof of full-state or historical numerical equivalence. Sampled CSVs need not
+include all events through the exact final simulation time.
 
-## Results and checking a run
+## How input factors affect speedup
 
-Only rank 0 writes `api.log`, `buffer.csv`, `can_bus.csv`, `checkpoints.csv`,
-and `summary.json` to the chosen directory. Use a different directory for
-concurrent runs. The summary includes the requested topology, stream map,
-actual bus-to-worker assignments, worker count used, final simulated time,
-and build/run wall times. The run time includes export; it excludes MPI job
-startup and final worker shutdown, so also use an external timer for end-to-end
-benchmarks.
+A useful model is:
 
-The runner checks that all requested buses are `MPICANBus`, that the built bus
-count matches, that no worker reported an error, and that simulation time
-reached the requested duration. A stale success summary is removed before
-setup. IVNS's normal `SystemExit(None)` is handled explicitly; setup exits and
-early simulation termination fail the new runner. Worker shutdown runs in a
-`finally` block.
+`T(P) = setup(P) + sum_over_windows(max_rank(local_work)) + exchange(P) + merge`.
 
-Reaching the requested duration does not prove every ECU authenticated or
-received data. Inspect checkpoint tags `CP_ECU_DECRYPTED_CONF_MESSAGE` and
-`CP_ECU_DECRYPTED_SIMPLE_MESSAGE` by component ID. Authentication and stream
-authorization take simulated time, and send attempts can be dropped before
-they finish. For larger chains or larger ECU counts, increase `--duration`
-and/or `--start`; shorten `--gateway-delay` only when that change fits the model
-you want to simulate. Monitoring is sampled, so the last CSV timestamp need
-not equal the final simulation time.
+| Factor | Effect |
+| --- | --- |
+| More ranks, fixed workload | Reduces local work until bus count, CPU capacity, load imbalance or communication dominates. Beyond bus count, ranks are idle. |
+| More ECUs, fixed buses | Adds authentication, receive and send work to existing partitions. More work can amortize exchange, but cannot create concurrency beyond bus count. The central security module, buffers and congestion can dominate. |
+| More buses, fixed ECUs | Creates partitions and reduces some contention, but adds gateways and chain hops. The ring's final-to-first stream crosses the whole chain. Runtime need not decrease monotonically. |
+| Shorter send interval | More compute and gateway traffic can amortize synchronization or saturate buses/buffers and communication. Dropped traffic can distort throughput comparisons. |
+| Smaller gateway delay/window | Less lookahead; approximately `duration/window` exchanges. Tiny windows can erase speedup. Reducing the window preserves timestamps; changing gateway delay changes the model. |
+| Longer duration | Amortizes setup/startup, but adds work and exchanges. Larger exports increase serial merging/digest cost. |
 
-## Potential speedup and limitations
+The useful parallelism is bounded by buses, active ranks, and CPU capacity.
+Balanced ECU counts do not imply balanced work: `CAN_0` hosts centralized security
+and gateway traffic is uneven. Every window waits for the slowest rank. Full
+configuration replicas add startup/memory cost; merging and hashing remain serial.
+With 20% effectively serial work, Amdahl's ideal four-way bound is only 2.5x.
 
-**The current MPI backend does not execute CAN requests concurrently.** Rank 0
-sends a blocking request, waits for the reply, then continues its SimPy event
-loop. SerializableSimpy workers own arbitration and callback-based bus timing
-state, while ECU/security generators, payloads, gateway routing, delivery,
-and monitoring all remain on rank 0. Assigning buses to different workers
-therefore provides state separation, not concurrent computation.
+Hold all model inputs constant when scaling ranks. Changing ECUs, topology,
+interval or delay changes the workload; compare each such case to its own one-rank
+baseline. The old asymmetric fixed preset is not that baseline. See
+[measured scaling results](partitioned-scaling.md) and the reproducible driver:
 
-For the present design, a useful approximation is:
+```sh
+python benchmarks/benchmark_lwa.py --suite factors --repeats 3 --output work/scaling.json
+```
 
-`T_MPI ≈ T_serial + number_of_requests × RPC_overhead + MPI_startup`.
-
-The approximation assumes equivalent computational work in the two backends;
-serialization, scheduling, and Python implementation differences also matter.
-Adding ranks alone offers no computational speedup and will usually slow this
-cheap CAN workload. An earlier observation for the original fixed preset was
-about 2.02 s serial versus 2.84 s on four ranks (roughly 0.71x speedup, or 40%
-more elapsed time). That was a single observation for a different workload,
-not a benchmark of this parameterized scenario.
-
-A future design could place each bus and its local ECU callback processes on
-one worker and exchange timestamped gateway messages. With concurrent work,
-the ideal Amdahl bound is `S(P) <= 1 / ((1-f) + f/P)`, where `f` is the measured
-parallelizable fraction and `P` the number of workers. If only 20% of runtime
-is parallelizable, four workers can ideally reach only about 1.18x before
-communication costs. If 80% becomes parallelizable, the corresponding ideal
-bound is 2.5x. Neither percentage has been measured for IVNS here.
-
-Useful scaling would require migrating the generator-based ECU protocol
-state to callbacks, supporting asynchronous communication, and enforcing
-causality across gateway messages. Partition count is then also bounded by
-the number of useful bus/ECU partitions. Load imbalance, the central security
-module, cross-bus traffic, and zero-delay paths can reduce that scaling.
-The ring's final-to-first stream spans the entire chain, making synchronization
-and gateway costs particularly relevant.
-
-Increasing bus count changes network congestion and simulated delivery
-latency; that is distinct from reducing wall time for the simulator. Increasing
-ECU count here also adds senders and authentication work, so a sweep is a
-growing-workload experiment, not a fixed-work strong-scaling benchmark. For
-rank-scaling comparisons, hold ECU count, topology, duration, interval,
-gateway delay, monitoring, and seed fixed and repeat runs. A serial comparison
-must use the same generated workload; the old preset is not that baseline.
-
-Other limits remain: finite buffers can drop traffic under load; the original
-timing cache/global-rate semantics remain; only bus-kernel state is
-checkpointable; MPI process loss and transport hangs have no recovery protocol.
-The existing preset's crypto configuration is retained for timing experiments.
-
-## Validation
+## Validation and limits
 
 ```sh
 python -m unittest discover -s tests -v
 python tests/param_lwa_smoke.py
+python tests/partitioned_mpi_smoke.py
 ```
 
-The MPI smoke test launches four real scenarios for 60 simulated seconds each:
+Tests cover pending CAN checkpoints, arbitration, snapshot isolation, late/misrouted
+frames, exact-boundary delivery/order, parameter constraints, and launcher errors.
+Real MPI topology tests cover single buses, uneven populations, multiple buses
+per rank, and surplus ranks. Every ECU must authenticate and receive data.
 
-| Regular ECUs | CAN buses | MPI ranks | Covered case |
-| ---: | ---: | ---: | --- |
-| 2 | 1 | 2 | Single bus, no gateways |
-| 7 | 3 | 4 | Uneven ECU distribution |
-| 8 | 4 | 2 | Multiple buses per worker |
-| 2 | 2 | 4 | More workers than buses |
+The distributed trace test compares seven executions of a seven-ECU, three-bus,
+60-second workload: an immediate-message one-rank reference without window buffering;
+windowed 1/2/3/4-rank runs; and two-rank windows of 0.5, 1 and 2 seconds. All match
+the semantic event digest exactly. The reference uses the new snapshot model,
+rather than the old shared-object gateway model.
 
-All four completed with every regular ECU authenticated and receiving
-application data, correct worker assignments, and no traceback. Existing
-`p_sec_mod_cert_size` configuration errors still appear in IVNS's logs.
-An additional 12-ECU, three-bus, four-rank run completed 200 simulated seconds,
-with all 12 ECUs authenticated and receiving application data.
-The tests also cover invalid parameters, topology construction, and the MPI
-launcher's legacy-exit/error-handling regression. Validation used Linux,
-CPython 3.11.18, Open MPI 5.0.7, and the pinned dependencies; Windows and
-multi-node execution remain unverified.
+ECU generators are still nonserializable, so whole-partition checkpoint/restart
+is not implemented. Bus kernels remain independently serializable. A rank
+exception aborts the MPI job to avoid leaving peers blocked in a collective;
+rank-loss recovery is not implemented. This targets the generated static LWA
+topology, not arbitrary dynamic IVNS models. Collective batch metadata grows
+with rank count; neighbor-only exchange and partition-aware setup construction
+are further opportunities. Current validation is single-node Linux; Windows and
+multi-node performance remain unverified. Existing `p_sec_mod_cert_size` errors
+still appear in the legacy configuration logs.

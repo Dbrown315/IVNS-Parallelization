@@ -140,8 +140,13 @@ and numerical equivalence to the legacy environment remain unverified.
 An opt-in SerializableSimpy/mpi4py CAN backend is available on this branch.
 See [architecture, setup, limitations, and validation](docs/canbus-mpi.md).
 Run it with `mpiexec -n 4 python run_mpi_headless.py` after installing
-`requirements-mpi.txt`. This is a CAN migration backend; ECU execution remains
-on rank 0 and MPI requests are synchronous, so it does not yet provide a speedup.
+`requirements-mpi.txt`. The original RPC mode retains this migration architecture;
+`main_lwa_param.py` now defaults to concurrent bus/ECU partitions.
 
 Configure topology at launch with `mpiexec -n 4 python main_lwa_param.py --ecus 12 --buses 3`.
 See [parameter options, topology, and speedup limitations](docs/lwa-param.md).
+
+Partitioned execution now runs ECU and CAN events on all active ranks, exchanging
+timestamped gateway frames in conservative windows. See the
+[new architecture and scaling guide](docs/lwa-param.md) and
+[measured results](docs/partitioned-scaling.md). Use `--execution rpc` for the old backend.

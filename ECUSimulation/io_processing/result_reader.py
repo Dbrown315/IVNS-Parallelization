@@ -43,6 +43,14 @@ class ResultReader(object):
             except:
                 pass
         
+    def close_exports(self):
+        """Close owned CSV streams before another rank merges the files."""
+        for interpreter in self._interpreters.values():
+            for owner in (interpreter, getattr(interpreter, 'core', None)):
+                stream = getattr(owner, 'csv_file', None)
+                if stream is not None:
+                    stream.close()
+
     def set_monitor(self, monitor):
         ''' connects the monitors handlers to this reader '''
         

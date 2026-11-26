@@ -29,6 +29,10 @@ def parse_args(argv=None):
     parser.add_argument('--ecus', type=int, default=6,
                         help='total regular ECUs, excluding security module and gateways (default: 6)')
     parser.add_argument('--buses', type=int, default=3, help='CAN buses (default: 3)')
+    parser.add_argument('--execution', choices=('partitioned', 'rpc'), default='partitioned',
+                        help='concurrent bus/ECU partitions (default), or legacy synchronous CAN RPC')
+    parser.add_argument('--sync-window', type=finite_number,
+                        help='partition synchronization interval, at most gateway delay (default: delay/2)')
     parser.add_argument('--duration', type=finite_number, default=200.0,
                         help='simulated seconds (default: 200)')
     parser.add_argument('--start', type=finite_number, default=10.0,
@@ -51,6 +55,11 @@ def parse_args(argv=None):
         parser.error('--start must be nonnegative and less than --duration')
     if args.gateway_delay < 0:
         parser.error('--gateway-delay must be nonnegative')
+    if args.execution == 'partitioned':
+        if args.gateway_delay <= 0:
+            parser.error('partitioned execution requires a positive --gateway-delay for lookahead')
+        if args.sync_window is not None and not 0 < args.sync_window <= args.gateway_delay:
+            parser.error('--sync-window must be positive and at most --gateway-delay')
     return args
 
 
@@ -69,7 +78,7 @@ def topology(ecus, buses):
 
 
 def build_scenario(args):
-    """Build the complete LWA model on rank 0 after installing the MPI runtime."""
+    """Build an LWA configuration after installing a local or RPC CAN runtime."""
     import api.ecu_sim_api as api
     from api.core.api_core import TimingFunctionSet
     from api.core.component_specs import RegularECUSpec, SimpleECUSpec, SimpleBusCouplerSpec, SimpleBusSpec
@@ -179,6 +188,10 @@ def main(argv=None):
     args = parse_args(argv)  # --help and invalid arguments work without MPI installed.
     sys.path.insert(0, str(ROOT / 'ECUSimulation'))
     os.environ['IVNS_HEADLESS'] = '1'
+    if args.execution == 'partitioned':
+        from components.base.bus.parallel.partitioned import run_partitioned
+        run_partitioned(args)
+        return
     from mpi4py import MPI
     from components.base.bus.parallel.mpi_can_runtime import MPICANRuntime, install_runtime, serve
 

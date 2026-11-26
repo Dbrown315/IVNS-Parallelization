@@ -189,7 +189,8 @@ class CanBusInterpreter(AbstractInterpreter):
         try:
             idx = filepath[::-1].find('.')
             filepath = filepath[:(-idx - 1)] + filepath[(-idx - 1):]   
-            self.csv_writer = csv.writer(open(filepath, 'w'), delimiter=',')
+            self.csv_file = open(filepath, 'w')
+            self.csv_writer = csv.writer(self.csv_file, delimiter=',')
                 
             # Headline
             self.csv_writer.writerow(["Information Type", "Time", "Bus ID", "Monitor Tag/ Datarate", "Unique Message ID"])
